@@ -1,1 +1,270 @@
 
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Daily Random Pro</title>
+<style>
+*{box-sizing:border-box}
+body{
+  margin:0;padding:20px;
+  font-family:Arial,sans-serif;
+  background:linear-gradient(135deg,#172554,#312e81);
+  color:#fff;min-height:100vh
+}
+.container{max-width:500px;margin:auto}
+h1{text-align:center;margin:12px 0 5px}
+.sub{text-align:center;color:#c7d2fe;margin-bottom:24px}
+.card{
+  background:#fff;color:#1e293b;
+  padding:20px;border-radius:18px;
+  margin-bottom:16px;
+  box-shadow:0 8px 25px #0002
+}
+.result{
+  text-align:center;font-size:64px;
+  font-weight:bold;color:#4f46e5;
+  padding:20px 0
+}
+button{
+  border:0;border-radius:12px;
+  padding:14px;font-size:16px;
+  font-weight:bold;cursor:pointer
+}
+.primary{background:#4f46e5;color:white;width:100%}
+.secondary{background:#e0e7ff;color:#3730a3;width:100%;margin-top:10px}
+button:disabled{opacity:.5;cursor:not-allowed}
+.inputs{display:flex;gap:12px}
+.inputs div{flex:1}
+label{display:block;font-weight:bold;margin-bottom:7px}
+input{
+  width:100%;padding:12px;
+  border:1px solid #cbd5e1;
+  border-radius:10px;font-size:16px
+}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stat{
+  background:#eef2ff;padding:14px;
+  border-radius:12px;text-align:center
+}
+.stat strong{display:block;font-size:23px;color:#4338ca;margin-top:5px}
+.status{text-align:center;color:#64748b;font-size:14px;margin-top:12px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{padding:10px 5px;text-align:center;border-bottom:1px solid #e2e8f0}
+th{color:#64748b}
+.history{max-height:260px;overflow:auto}
+.empty{text-align:center;color:#64748b;padding:18px}
+.footer{text-align:center;color:#c7d2fe;font-size:12px;margin-top:20px}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🎲 Daily Random Pro</h1>
+  <div class="sub">Mỗi ngày một con số ngẫu nhiên</div>
+
+  <div class="card">
+    <div class="inputs">
+      <div>
+        <label for="min">Giới hạn dưới</label>
+        <input id="min" type="number" value="30">
+      </div>
+      <div>
+        <label for="max">Giới hạn trên</label>
+        <input id="max" type="number" value="100">
+      </div>
+    </div>
+    <button class="secondary" onclick="saveLimits()">Lưu giới hạn</button>
+  </div>
+
+  <div class="card">
+    <div style="text-align:center;font-weight:bold">KẾT QUẢ HÔM NAY</div>
+    <div class="result" id="result">?</div>
+    <button class="primary" id="drawBtn" onclick="draw('manual')">🎯 QUAY NGAY</button>
+    <div class="status" id="status">Nếu chưa quay, ứng dụng sẽ tự quay sau 5 phút.</div>
+  </div>
+
+  <div class="card">
+    <h3>📊 Thống kê</h3>
+    <div class="stats">
+      <div class="stat">Số lần quay<strong id="count">0</strong></div>
+      <div class="stat">Tổng điểm<strong id="total">0</strong></div>
+      <div class="stat">Trung bình<strong id="average">0</strong></div>
+      <div class="stat">Kết quả cao nhất<strong id="highest">—</strong></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>📅 Lịch sử quay</h3>
+    <div class="history" id="history"></div>
+    <button class="secondary" onclick="exportCSV()">⬇️ Xuất file CSV</button>
+  </div>
+
+  <div class="footer">Dữ liệu được lưu trên trình duyệt của thiết bị.</div>
+</div>
+
+<script>
+const STORAGE_KEY = "dailyRandomPro_v1";
+
+let records = [];
+let limits = { min: 30, max: 100 };
+
+function today() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,"0");
+  const day = String(d.getDate()).padStart(2,"0");
+  return `${y}-${m}-${day}`;
+}
+
+function loadData() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (saved) {
+      records = Array.isArray(saved.records) ? saved.records : [];
+      limits = saved.limits || limits;
+    }
+  } catch(e) {
+    records = [];
+  }
+
+  document.getElementById("min").value = limits.min;
+  document.getElementById("max").value = limits.max;
+}
+
+function saveData() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({
+    records, limits
+  }));
+}
+
+function getTodayRecord() {
+  return records.find(item => item.date === today());
+}
+
+function saveLimits() {
+  const min = Number(document.getElementById("min").value);
+  const max = Number(document.getElementById("max").value);
+
+  if (!Number.isInteger(min) || !Number.isInteger(max) || min > max) {
+    alert("Vui lòng nhập hai số nguyên hợp lệ. Giới hạn dưới không được lớn hơn giới hạn trên.");
+    return;
+  }
+
+  limits = { min, max };
+  saveData();
+  alert("Đã lưu giới hạn!");
+}
+
+function draw(type) {
+  if (getTodayRecord()) {
+    render();
+    return;
+  }
+
+  const min = Number(limits.min);
+  const max = Number(limits.max);
+
+  if (!Number.isInteger(min) || !Number.isInteger(max) || min > max) {
+    document.getElementById("status").textContent =
+      "Giới hạn không hợp lệ. Hãy kiểm tra lại.";
+    return;
+  }
+
+  const value = Math.floor(Math.random() * (max-min+1)) + min;
+
+  records.push({
+    date: today(),
+    value,
+    type,
+    time: new Date().toLocaleTimeString("vi-VN")
+  });
+
+  saveData();
+  render();
+}
+
+function render() {
+  const record = getTodayRecord();
+  const drawBtn = document.getElementById("drawBtn");
+
+  if (record) {
+    document.getElementById("result").textContent = record.value;
+    document.getElementById("status").textContent =
+      `Đã quay hôm nay lúc ${record.time}.`;
+    drawBtn.disabled = true;
+    drawBtn.textContent = "ĐÃ QUAY HÔM NAY";
+  } else {
+    document.getElementById("result").textContent = "?";
+    document.getElementById("status").textContent =
+      "Chưa quay hôm nay. Tự động quay sau 5 phút nếu bạn chưa bấm quay.";
+    drawBtn.disabled = false;
+    drawBtn.textContent = "🎯 QUAY NGAY";
+  }
+
+  const values = records.map(x => x.value);
+  const total = values.reduce((sum, n) => sum+n, 0);
+
+  document.getElementById("count").textContent = records.length;
+  document.getElementById("total").textContent = total;
+  document.getElementById("average").textContent =
+    values.length ? (total/values.length).toFixed(2) : 0;
+  document.getElementById("highest").textContent =
+    values.length ? Math.max(...values) : "—";
+
+  const sorted = [...records].sort((a,b) => b.date.localeCompare(a.date));
+
+  document.getElementById("history").innerHTML = sorted.length
+    ? `<table>
+        <thead><tr><th>Ngày</th><th>Kết quả</th><th>Hình thức</th></tr></thead>
+        <tbody>${sorted.map(x =>
+          `<tr>
+            <td>${x.date}</td>
+            <td><strong>${x.value}</strong></td>
+            <td>${x.type === "auto" ? "Tự động" : "Chủ động"}</td>
+          </tr>`
+        ).join("")}</tbody>
+      </table>`
+    : '<div class="empty">Chưa có lịch sử quay.</div>';
+}
+
+function exportCSV() {
+  if (!records.length) {
+    alert("Chưa có dữ liệu để xuất.");
+    return;
+  }
+
+  const rows = [
+    ["Ngày","Kết quả","Hình thức","Thời gian"],
+    ...records.map(x => [
+      x.date, x.value,
+      x.type === "auto" ? "Tự động" : "Chủ động",
+      x.time
+    ])
+  ];
+
+  const csv = "\uFEFF" + rows.map(row =>
+    row.map(v => `"${String(v).replace(/"/g,'""')}"`).join(",")
+  ).join("\n");
+
+  const blob = new Blob([csv], {type:"text/csv;charset=utf-8;"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "lich-su-quay.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+loadData();
+render();
+
+// Tự động quay sau 5 phút nếu hôm nay chưa có kết quả.
+setTimeout(() => {
+  if (!getTodayRecord()) {
+    draw("auto");
+  }
+}, 5 * 60 * 1000);
+</script>
+</body>
+</html>
